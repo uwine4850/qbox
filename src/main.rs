@@ -1,6 +1,6 @@
 mod fd;
 mod cli;
-mod qbox;
+mod qb;
 
 fn main() {
     cli::commands::init();

@@ -1,0 +1,6 @@
+make_dir: true
+files:
+  - "$HOME/.config": "*"
+  - "$HOME/.config/waybar": "*"
+excludes:
+  - "$HOME/.config/tee"
