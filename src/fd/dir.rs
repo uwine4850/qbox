@@ -10,9 +10,13 @@ pub fn make(path: &str) -> io::Result<bool> {
     }
 }
 
-pub fn delete(path: &str) -> io::Result<bool> {
+pub fn delete(path: &str, force: bool) -> io::Result<bool> {
     if Path::new(path).exists(){
-        fs::remove_dir(path)?;
+        if force {
+            fs::remove_dir_all(path)?;
+        } else {
+            fs::remove_dir(path)?;
+        }
         Ok(true)
     } else {
         Ok(false)

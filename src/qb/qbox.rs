@@ -39,7 +39,7 @@ pub fn make(name: &str) -> io::Result<()>{
 pub fn delete(name: &str) -> io::Result<()>{
     let qbox_path = make_qbox_path(name)?;
     if qbox_path.exists(){
-        let is_delete = fd::dir::delete(qbox_path.to_str().unwrap())?;
+        let is_delete = fd::dir::delete(qbox_path.to_str().unwrap(), false)?;
         if !is_delete {
             return Err(
                 io::Error::other("unexpected error")
@@ -70,27 +70,16 @@ fn read_config(path: PathBuf) -> Result<Config, QboxError>{
 pub struct Qbox {
     name: String,
     config: Option<Config>,
-    qbox_path: Option<PathBuf>,
+    qbox_path: PathBuf,
 }
 
 impl Qbox {
-    pub fn new(name: &str) -> Self {
-        Self { name: name.into(), config: None, qbox_path: None }
-    }
-
-    pub fn open(& mut self) -> Result<&Self, QboxError>{
-        let qbox_path = make_qbox_path(&self.name)?;
-        self.qbox_path = Some(qbox_path.clone());
+    pub fn new(name: &str) -> Result<Self, QboxError> {
+        let qbox_path = make_qbox_path(name)?;
         if qbox_path.exists() {
-            let config_path = qbox_path.join(QBOX_CONFIG_NAME);
-            if config_path.exists(){
-                self.config = Some(read_config(config_path)?);
-                Ok(self)
-            } else {
-                Err(
-                    QboxError::MissingConfig(config_path)
-                )
-            }
+            Ok(
+                Self { name: name.into(), config: None, qbox_path }
+            )
         } else {
             Err(
                 QboxError::MissingQbox(qbox_path)
@@ -98,23 +87,47 @@ impl Qbox {
         }
     }
 
+    pub fn open(& mut self) -> Result<&Self, QboxError>{
+        let config_path = self.qbox_path.join(QBOX_CONFIG_NAME);
+        if config_path.exists(){
+            self.config = Some(read_config(config_path)?);
+            Ok(self)
+        } else {
+            Err(
+                QboxError::MissingConfig(config_path)
+            )
+        }
+    }
+
     pub fn new_version(&self, name: &str) -> Result<(), QboxError> {
-        if let Some(qbox_path) = &self.qbox_path {
-            let version_path = qbox_path.join(name);
-            if !version_path.exists(){
-                if !fd::dir::make(version_path.to_str().unwrap())? {
-                    return Err(
-                        QboxError::VersionPathError(version_path, "unexpected error".to_string())
-                    );
-                }
-            } else {
+        let version_path = self.qbox_path.join(name);
+        if !version_path.exists(){
+            if !fd::dir::make(version_path.to_str().unwrap())? {
                 return Err(
-                    QboxError::VersionPathError(version_path, "version already exists".to_string())
+                    QboxError::VersionPathError(version_path, "unexpected error".to_string())
                 );
             }
-            Ok(())
         } else {
-            Err(QboxError::MissingQbox(PathBuf::new()))
+            return Err(
+                QboxError::VersionPathError(version_path, "version already exists".to_string())
+            );
         }
+        Ok(())
+    }
+
+    pub fn remove_version(&self, name: &str, force: bool) -> Result<(), QboxError> {
+        let version_path = self.qbox_path.join(name);
+        if version_path.exists(){
+            if !fd::dir::delete(version_path.to_str().unwrap(), force)? {
+                return Err(
+                    QboxError::VersionPathError(version_path, "unexpected error".to_string())
+                );
+            }
+        } else {
+            return Err(
+                QboxError::VersionPathError(version_path, "version not exists".to_string())
+            );
+        }
+        Ok(())
     }
 }

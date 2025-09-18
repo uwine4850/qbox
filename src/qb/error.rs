@@ -12,11 +12,11 @@ pub enum QboxError {
 impl fmt::Display for QboxError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            QboxError::MissingQbox(path) => write!(f, "Qbox dir not found: {}", path.display()),
-            QboxError::MissingConfig(path) => write!(f, "Config file not found: {}", path.display()),
-            QboxError::VersionPathError(path, err) => write!(f, "Version {} path error: {}", path.display(), err),
-            QboxError::ConfigParse(e) => write!(f, "Parse config error: {}", e),
-            QboxError::IO(e) => write!(f, "IO error {}", e),
+            QboxError::MissingQbox(path) => write!(f, "qbox dir not found: {}", path.display()),
+            QboxError::MissingConfig(path) => write!(f, "config file not found: {}", path.display()),
+            QboxError::VersionPathError(path, err) => write!(f, "version {} path error: {}", path.display(), err),
+            QboxError::ConfigParse(e) => write!(f, "parse config error: {}", e),
+            QboxError::IO(e) => write!(f, "io error {}", e),
         }
     }
 }
