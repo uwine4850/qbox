@@ -30,6 +30,9 @@ enum Commands {
 
         #[arg(long)]
         force: bool,
+
+        #[arg(long)]
+        record: Option<String>
     },
 }
 
@@ -41,7 +44,7 @@ pub fn init(){
             Ok(_) => println!("Init successful"),
             Err(e) => eprintln!("Init failed: {}", e),
         },
-        Commands::Qb {make, delete, open, new_ver, del_ver, force} => {
+        Commands::Qb {make, delete, open, new_ver, del_ver, force, record} => {
             if let Some(make) = make {
                 match qb::qbox::make(&make) {
                     Ok(_) => println!("Qbox \"{}\" created successfully", make),
@@ -70,6 +73,13 @@ pub fn init(){
                                         Ok(_) => println!("version {} deleted", del_ver),
                                         Err(e) => println!("Failed to delete version: {}", e),
                                     }
+                                }
+                                if let Some(record) = record {
+                                    q.record(&record)
+                                    // match q.record(&record) {
+                                        // Ok(_) => println!("d"),
+                                        // Err(e) => println!("{}", e),
+                                    // };
                                 }
                             },
                             Err(e) => {

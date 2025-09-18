@@ -1,5 +1,5 @@
-use std::{collections::HashMap, io, path::PathBuf};
-use crate::{fd, qb::{error::QboxError, QBOX_CONFIG_NAME}};
+use std::{collections::HashMap, env, io, path::{Path, PathBuf}};
+use crate::{fd::{self}, qb::{error::QboxError, QBOX_CONFIG_NAME}};
 use serde::Deserialize;
 
 const BOX_DIR: &str = "boxes";
@@ -53,11 +53,77 @@ pub fn delete(name: &str) -> io::Result<()>{
     }
 }
 
+const CONFIG_VARIABLES: [&str; 1] = ["HOME"];
+
 #[derive(Debug, Deserialize)]
 struct Config {
     make_dir: bool,
-    files: Vec<HashMap<String, String>>,
+    pub files: Vec<HashMap<PathBuf, String>>,
     excludes: Vec<String>,
+}
+
+impl Config {
+    pub fn variable_data(variable: &str) -> Result<String, QboxError> {
+        match variable {
+            "HOME" => {
+                let home = env::var("HOME")?;
+                Ok(home)
+            },
+            _ => Err(
+                QboxError::ConfigUndefinedVariable(variable.to_string())
+            ),
+        }
+    }
+
+    pub fn validate(&mut self) -> Result<(), QboxError> {
+        let mut valid_files: Vec<HashMap<PathBuf, String>> = Vec::new();
+        for file in &self.files {
+            let mut valid_map: HashMap<PathBuf, String> = HashMap::new();
+            for (source_path, target_path) in file {
+                if target_path != "*" && (!source_path.starts_with("/") || !target_path.starts_with("/")) {
+                    return Err(QboxError::IO(
+                        io::Error::new(io::ErrorKind::NotFound, "config path must be in absolute format"))
+                    );
+                }
+                let valid_source_path = self.path_validate(source_path)?;
+                let valid_target_path = if target_path == "*" {
+                    valid_source_path.to_str().expect("unexpected path error").to_string()
+                } else if self.make_dir{
+                    target_path.to_string()
+                } else {
+                    self.path_validate(Path::new(target_path))?.to_str()
+                        .expect("unexpected path error")
+                        .to_string()
+                };
+                valid_map.insert(valid_source_path, valid_target_path);
+            }
+            valid_files.push(valid_map);
+        }
+        self.files = valid_files;
+        Ok(())
+    }
+
+    fn path_validate(&self, path: &Path) -> Result<PathBuf, QboxError>{
+        let system_file_path = path.to_str().unwrap();
+        if let Some(dollar_pos) = system_file_path.find("$")
+            && let Some(slash_pos) = system_file_path[dollar_pos..].find("/"){
+                let variable = &system_file_path[dollar_pos+1..dollar_pos+1 + slash_pos-1];
+                if CONFIG_VARIABLES.contains(&variable){
+                    let var_data = Config::variable_data(variable)?;
+                    let new_path = PathBuf::from(system_file_path[..dollar_pos].trim())
+                        .join(var_data)
+                        .join(system_file_path[dollar_pos + slash_pos..].trim_start_matches('/'));
+                    path_exists(&new_path)?;
+                    Ok(new_path)
+                } else {
+                    Err(QboxError::ConfigUndefinedVariable(variable.to_string()))
+                }
+        } else {
+            path_exists(path)?;
+            Ok(path.to_path_buf())
+        }
+    }
+
 }
 
 fn read_config(path: PathBuf) -> Result<Config, QboxError>{
@@ -68,7 +134,6 @@ fn read_config(path: PathBuf) -> Result<Config, QboxError>{
 
 #[derive(Debug)]
 pub struct Qbox {
-    name: String,
     config: Option<Config>,
     qbox_path: PathBuf,
 }
@@ -78,7 +143,7 @@ impl Qbox {
         let qbox_path = make_qbox_path(name)?;
         if qbox_path.exists() {
             Ok(
-                Self { name: name.into(), config: None, qbox_path }
+                Self {config: None, qbox_path }
             )
         } else {
             Err(
@@ -87,10 +152,12 @@ impl Qbox {
         }
     }
 
-    pub fn open(& mut self) -> Result<&Self, QboxError>{
+    pub fn open(&mut self) -> Result<&Self, QboxError>{
         let config_path = self.qbox_path.join(QBOX_CONFIG_NAME);
         if config_path.exists(){
-            self.config = Some(read_config(config_path)?);
+            let mut readed_config = read_config(config_path)?;
+            readed_config.validate()?;
+            self.config = Some(readed_config);
             Ok(self)
         } else {
             Err(
@@ -130,4 +197,18 @@ impl Qbox {
         }
         Ok(())
     }
+
+    pub fn record(&self, version: &str) {
+        
+    }
+}
+
+fn path_exists(path: &Path) -> Result<(), QboxError>{
+    if !path.exists(){
+        return Err(QboxError::IO(
+            io::Error::new(io::ErrorKind::NotFound, format!("path {} does not exist", path.to_str()
+                .expect("undefined path"))))
+        );
+    }
+    Ok(())
 }
