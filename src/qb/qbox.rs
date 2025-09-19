@@ -1,5 +1,5 @@
-use std::{collections::HashMap, env, io, path::{Path, PathBuf}};
-use crate::{fd::{self}, qb::{error::QboxError, QBOX_CONFIG_NAME}};
+use std::{collections::HashMap, env, fs, io, path::{Path, PathBuf}};
+use crate::{fd::{self, file}, qb::{error::QboxError, QBOX_CONFIG_NAME}};
 use serde::Deserialize;
 
 const BOX_DIR: &str = "boxes";
@@ -59,10 +59,14 @@ const CONFIG_VARIABLES: [&str; 1] = ["HOME"];
 struct Config {
     make_dir: bool,
     pub files: Vec<HashMap<PathBuf, String>>,
-    excludes: Vec<String>,
+    excludes: Vec<PathBuf>,
 }
 
 impl Config {
+    pub fn new() -> Self{
+        Self { make_dir: false, files: Vec::new(), excludes: Vec::new() }
+    }
+
     pub fn variable_data(variable: &str) -> Result<String, QboxError> {
         match variable {
             "HOME" => {
@@ -85,13 +89,15 @@ impl Config {
                         io::Error::new(io::ErrorKind::NotFound, "config path must be in absolute format"))
                     );
                 }
-                let valid_source_path = self.path_validate(source_path)?;
+                let valid_source_path = self.path_validate(source_path, true)?;
                 let valid_target_path = if target_path == "*" {
                     valid_source_path.to_str().expect("unexpected path error").to_string()
                 } else if self.make_dir{
-                    target_path.to_string()
+                    self.path_validate(Path::new(target_path), false)?.to_str()
+                        .expect("unexpected path error")
+                        .to_string()
                 } else {
-                    self.path_validate(Path::new(target_path))?.to_str()
+                    self.path_validate(Path::new(target_path), true)?.to_str()
                         .expect("unexpected path error")
                         .to_string()
                 };
@@ -100,10 +106,15 @@ impl Config {
             valid_files.push(valid_map);
         }
         self.files = valid_files;
+        let mut valid_excludes: Vec<PathBuf> = Vec::new();
+        for exclude_path in &self.excludes {
+            valid_excludes.push(self.path_validate(&exclude_path, true)?);
+        }
+        self.excludes = valid_excludes;
         Ok(())
     }
 
-    fn path_validate(&self, path: &Path) -> Result<PathBuf, QboxError>{
+    fn path_validate(&self, path: &Path, check_exists: bool) -> Result<PathBuf, QboxError>{
         let system_file_path = path.to_str().unwrap();
         if let Some(dollar_pos) = system_file_path.find("$")
             && let Some(slash_pos) = system_file_path[dollar_pos..].find("/"){
@@ -113,13 +124,17 @@ impl Config {
                     let new_path = PathBuf::from(system_file_path[..dollar_pos].trim())
                         .join(var_data)
                         .join(system_file_path[dollar_pos + slash_pos..].trim_start_matches('/'));
-                    path_exists(&new_path)?;
+                    if check_exists{
+                        fd::dir::path_exists(&new_path)?;
+                    }
                     Ok(new_path)
                 } else {
                     Err(QboxError::ConfigUndefinedVariable(variable.to_string()))
                 }
         } else {
-            path_exists(path)?;
+            if check_exists{
+                fd::dir::path_exists(path)?;
+            }
             Ok(path.to_path_buf())
         }
     }
@@ -134,7 +149,7 @@ fn read_config(path: PathBuf) -> Result<Config, QboxError>{
 
 #[derive(Debug)]
 pub struct Qbox {
-    config: Option<Config>,
+    config: Config,
     qbox_path: PathBuf,
 }
 
@@ -143,7 +158,7 @@ impl Qbox {
         let qbox_path = make_qbox_path(name)?;
         if qbox_path.exists() {
             Ok(
-                Self {config: None, qbox_path }
+                Self {config: Config::new(), qbox_path }
             )
         } else {
             Err(
@@ -157,7 +172,7 @@ impl Qbox {
         if config_path.exists(){
             let mut readed_config = read_config(config_path)?;
             readed_config.validate()?;
-            self.config = Some(readed_config);
+            self.config = readed_config;
             Ok(self)
         } else {
             Err(
@@ -198,17 +213,28 @@ impl Qbox {
         Ok(())
     }
 
-    pub fn record(&self, version: &str) {
-        
+    pub fn record(&self, version: &str) -> Result<(), QboxError> {
+        let version_path = self.qbox_path.join(version);
+        if !version_path.exists(){
+            return Err(
+                QboxError::VersionPathError(version_path, "version not exists".to_string())
+            );
+        }
+        let excludes: Vec<&str> = self.config.excludes.iter().map(|p| p.to_str().expect("invalid utf-8 in exclude path")).collect();
+        for file in &self.config.files {
+            for source_path in file.keys(){
+                for write_file_path in fd::dir::read_all(source_path, Some(&excludes))? {
+                    let str_write_file_path = write_file_path.to_str().
+                        expect("invalid utf-8 in source path");
+                    let formated_write_file_path = str_write_file_path.trim_start_matches('/');
+                    let v_file_path = version_path.join(formated_write_file_path);
+                    let v_file_dir = v_file_path.parent()
+                        .unwrap_or_else(|| panic!("the parent directory for the file \"{}\" does not exist", str_write_file_path));
+                    fs::create_dir_all(v_file_dir)?;
+                    fs::copy(write_file_path, &v_file_path)?;
+                }
+            }
+        }
+        Ok(())
     }
-}
-
-fn path_exists(path: &Path) -> Result<(), QboxError>{
-    if !path.exists(){
-        return Err(QboxError::IO(
-            io::Error::new(io::ErrorKind::NotFound, format!("path {} does not exist", path.to_str()
-                .expect("undefined path"))))
-        );
-    }
-    Ok(())
 }

@@ -75,11 +75,10 @@ pub fn init(){
                                     }
                                 }
                                 if let Some(record) = record {
-                                    q.record(&record)
-                                    // match q.record(&record) {
-                                        // Ok(_) => println!("d"),
-                                        // Err(e) => println!("{}", e),
-                                    // };
+                                    match q.record(&record) {
+                                        Ok(_) => println!("success record version {}", record),
+                                        Err(e) => println!("Failed record {}", e),
+                                    };
                                 }
                             },
                             Err(e) => {
