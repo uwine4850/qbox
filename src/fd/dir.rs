@@ -46,47 +46,18 @@ pub fn read_all(path: &Path, exclude: Option<&Vec<&str>>) -> io::Result<Vec<Path
     Ok(curr)
 }
 
-// pub fn read_all(path: &Path, exclude: Option<&Vec<&str>>) -> io::Result<Vec<PathBuf>> {
-//     let binding = Vec::new();
-//     let exclude = exclude.unwrap_or(&binding);
-
-//     let mut results: Vec<Vec<PathBuf>> = Vec::new();
-
-//     if path.is_dir() {
-//         let mut current: Vec<PathBuf> = Vec::new();
-
-//         for entry in fs::read_dir(path)? {
-//             let entry = entry?;
-//             let path = entry.path();
-
-//             if !exclude.iter().any(|e| path.ends_with(e)) {
-//                 if path.is_dir() {
-//                     let sub = read_all(&path, Some(exclude))?;
-//                     results.push(sub);
-//                 } else {
-//                     current.push(path);
-//                 }
-//             }
-//         }
-
-//         if !current.is_empty() {
-//             // println!("curr {:?}", current);
-//             // results.push(current);
-//             return Ok(current);
-//         }
-//     } else {
-//         // println!("aa {:?}", path)
-//         results.push(vec![path.to_path_buf()]);
-//     }
-
-//     Ok(vec![])
-// }
-
 pub fn path_exists(path: &Path) -> io::Result<()>{
     if !path.exists(){
         return Err(io::Error::new(io::ErrorKind::NotFound, format!("path {} does not exist", path.to_str()
                 .expect("undefined path")))
         );
     }
+    Ok(())
+}
+
+pub fn clear(path: &Path) -> io::Result<()> {
+    path_exists(path)?;
+    fs::remove_dir_all(path)?;
+    fs::create_dir_all(path)?;
     Ok(())
 }

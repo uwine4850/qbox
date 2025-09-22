@@ -213,12 +213,15 @@ impl Qbox {
         Ok(())
     }
 
-    pub fn record(&self, version: &str) -> Result<(), QboxError> {
+    pub fn record(&self, version: &str, force: bool) -> Result<(), QboxError> {
         let version_path = self.qbox_path.join(version);
         if !version_path.exists(){
             return Err(
                 QboxError::VersionPathError(version_path, "version not exists".to_string())
             );
+        }
+        if force{
+            fd::dir::clear(&version_path)?;
         }
         let excludes: Vec<&str> = self.config.excludes.iter().map(|p| p.to_str().expect("invalid utf-8 in exclude path")).collect();
         for file in &self.config.files {
