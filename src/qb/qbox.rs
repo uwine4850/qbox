@@ -1,5 +1,5 @@
 use std::{collections::HashMap, env, fs, io, path::{Path, PathBuf}};
-use crate::{fd::{self, file}, qb::{error::QboxError, QBOX_CONFIG_NAME}};
+use crate::{fd::{self, file}, qb::{error::QboxError, QBOX_CONFIG_NAME, RESERVED_KEYWORDS, V_BACKUP_NAME}};
 use serde::Deserialize;
 
 const BOX_DIR: &str = "boxes";
@@ -139,6 +139,10 @@ impl Config {
         }
     }
 
+    pub fn excludes_to_str(&self) -> Vec<&str>{
+        self.excludes.iter().map(|p| p.to_str().expect("invalid utf-8 in exclude path")).collect()
+    }
+
 }
 
 fn read_config(path: PathBuf) -> Result<Config, QboxError>{
@@ -182,6 +186,7 @@ impl Qbox {
     }
 
     pub fn new_version(&self, name: &str) -> Result<(), QboxError> {
+        check_keywords(name)?;
         let version_path = self.qbox_path.join(name);
         if !version_path.exists(){
             if !fd::dir::make(version_path.to_str().unwrap())? {
@@ -223,21 +228,46 @@ impl Qbox {
         if force{
             fd::dir::clear(&version_path)?;
         }
-        let excludes: Vec<&str> = self.config.excludes.iter().map(|p| p.to_str().expect("invalid utf-8 in exclude path")).collect();
         for file in &self.config.files {
             for source_path in file.keys(){
-                for write_file_path in fd::dir::read_all(source_path, Some(&excludes))? {
-                    let str_write_file_path = write_file_path.to_str().
-                        expect("invalid utf-8 in source path");
-                    let formated_write_file_path = str_write_file_path.trim_start_matches('/');
-                    let v_file_path = version_path.join(formated_write_file_path);
-                    let v_file_dir = v_file_path.parent()
-                        .unwrap_or_else(|| panic!("the parent directory for the file \"{}\" does not exist", str_write_file_path));
-                    fs::create_dir_all(v_file_dir)?;
-                    fs::copy(write_file_path, &v_file_path)?;
+                for write_file_path in fd::dir::read_all(source_path, Some(&self.config.excludes_to_str()))? {
+                    fd::file::create_in_dir(&write_file_path, &version_path)?;
                 }
             }
         }
         Ok(())
     }
+
+    pub fn apply(&self, version: &str) -> Result<(), QboxError> {
+        self.make_backup()?;
+        Ok(())
+    }
+
+    fn make_backup(&self) -> Result<(), QboxError>{
+        let v_backup_path = self.qbox_path.join(V_BACKUP_NAME);
+        if !v_backup_path.exists() {
+            self.new_version(V_BACKUP_NAME)?;
+        }
+        fd::dir::clear(&v_backup_path)?;
+        for file in &self.config.files {
+            for target_dir in file.values() {
+                let target_dir_path = Path::new(target_dir);
+                if !target_dir_path.exists(){
+                    continue;
+                }
+
+                for target_file_path in fd::dir::read_all(target_dir_path, Some(&self.config.excludes_to_str()))? {
+                    fd::file::create_in_dir(&target_file_path, &v_backup_path)?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+fn check_keywords(name: &str) -> Result<(), QboxError>{
+    if RESERVED_KEYWORDS.contains(&name){
+        return Err(QboxError::ReservedKeyword(name.to_string()));
+    }
+    Ok(())
 }

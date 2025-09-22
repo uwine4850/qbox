@@ -8,6 +8,7 @@ pub enum QboxError {
     ConfigParse(serde_yaml::Error),
     ConfigUndefinedVariable(String),
     Variable(env::VarError),
+    ReservedKeyword(String),
     IO(io::Error),
 }
 
@@ -20,6 +21,7 @@ impl fmt::Display for QboxError {
             QboxError::ConfigUndefinedVariable(variable) => write!(f, "undefined variable {}", variable),
             QboxError::Variable(e) => write!(f, "wariable error: {}", e),
             QboxError::ConfigParse(e) => write!(f, "parse config error: {}", e),
+            QboxError::ReservedKeyword(name) => write!(f, "keyword {} is reserved", name),
             QboxError::IO(e) => write!(f, "io error: {}", e),
         }
     }
