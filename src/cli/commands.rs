@@ -35,7 +35,13 @@ enum Commands {
         record: Option<String>,
 
         #[arg(long)]
+        backup: bool,
+
+        #[arg(long)]
         apply: Option<String>,
+
+        #[arg(long)]
+        apply_backup: Option<String>,
     },
 }
 
@@ -47,7 +53,7 @@ pub fn init(){
             Ok(_) => println!("Init successful"),
             Err(e) => eprintln!("Init failed: {}", e),
         },
-        Commands::Qb {make, delete, open, new_ver, del_ver, force, record, apply} => {
+        Commands::Qb {make, delete, open, new_ver, del_ver, force, record, backup, apply, apply_backup} => {
             if let Some(make) = make {
                 match qb::qbox::make(&make) {
                     Ok(_) => println!("Qbox \"{}\" created successfully", make),
@@ -81,6 +87,12 @@ pub fn init(){
                                     match q.record(&record, force) {
                                         Ok(_) => println!("success record version {}", record),
                                         Err(e) => println!("Failed record {}", e),
+                                    };
+                                }
+                                if backup{
+                                    match q.make_backup() {
+                                        Ok(_) => println!("success create backup"),
+                                        Err(e) => println!("Failed backup {}", e),
                                     };
                                 }
                                 if let Some(apply) = apply {

@@ -7,6 +7,7 @@ use crate::fd::dir;
 /// It is important to understand that the file will only be created relative to the target directory.
 /// This means that even an absolute path to the file will still be created in the target directory.
 pub fn create_in_dir(filename: &Path, target_dir: &Path) -> io::Result<()>{
+    println!("{:?}", target_dir);
     dir::path_exists(target_dir)?;
     let str_filename = filename.to_str().
         expect("invalid utf-8 in source path");

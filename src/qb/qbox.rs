@@ -89,6 +89,11 @@ impl Config {
                         io::Error::new(io::ErrorKind::NotFound, "config path must be in absolute format"))
                     );
                 }
+                if target_path != "*" && (source_path.ends_with("/") || target_path.ends_with("/")) {
+                    return Err(QboxError::IO(
+                        io::Error::new(io::ErrorKind::NotFound, "config path must not end with '/'"))
+                    );
+                }
                 let valid_source_path = self.path_validate(source_path, true)?;
                 let valid_target_path = if target_path == "*" {
                     valid_source_path.to_str().expect("unexpected path error").to_string()
@@ -239,11 +244,48 @@ impl Qbox {
     }
 
     pub fn apply(&self, version: &str) -> Result<(), QboxError> {
-        self.make_backup()?;
+        if version == V_BACKUP_NAME {
+            self.apply_backup()?;
+            return Ok(());
+        }
+        let version_path = self.qbox_path.join(version);
+        if !version_path.exists(){
+            return Err(
+                QboxError::VersionPathError(version_path, "version not exists".to_string())
+            );
+        }
+        let mut formatted_v_file_paths: Vec<String> = vec![];
+        for v_file_path in fd::dir::read_all(&version_path, None)? {
+            let formatted_v_file_path =
+                v_file_path
+                    .to_str().expect("invalid utf-8 in source path")
+                    .strip_prefix(version_path.to_str().expect("invalid utf-8 in source path"))
+                    .expect("path is not prefixed by version_path").to_string();
+            formatted_v_file_paths.push(formatted_v_file_path);
+        }
+        for file in &self.config.files {
+            for (source_path, target_path) in file {
+                let string_source_path = source_path.to_str().expect("invalid utf-8 in source path").to_string();
+                for formatted_v_file_path in &formatted_v_file_paths {
+                    println!("{:?}", string_source_path);
+                    if formatted_v_file_path.starts_with(&string_source_path){
+                        let real_files = formatted_v_file_path.trim_start_matches(&string_source_path).trim_start_matches("/");
+                        let new_file = Path::new(target_path).join(Path::new(real_files));
+                        let new_file_parent = new_file.parent()
+                            .unwrap_or_else(|| panic!("the parent directory for the file \"{:?}\" does not exist", new_file));
+                        if new_file_parent.exists(){
+                            fs::remove_dir_all(new_file_parent)?;
+                        }
+                        fs::create_dir_all(new_file_parent)?;
+                        fs::copy(formatted_v_file_path, new_file)?;
+                    }
+                }
+            }
+        }
         Ok(())
     }
 
-    fn make_backup(&self) -> Result<(), QboxError>{
+    pub fn make_backup(&self) -> Result<(), QboxError>{
         let v_backup_path = self.qbox_path.join(V_BACKUP_NAME);
         if !v_backup_path.exists() {
             self.new_version(V_BACKUP_NAME)?;
@@ -255,11 +297,30 @@ impl Qbox {
                 if !target_dir_path.exists(){
                     continue;
                 }
-
                 for target_file_path in fd::dir::read_all(target_dir_path, Some(&self.config.excludes_to_str()))? {
                     fd::file::create_in_dir(&target_file_path, &v_backup_path)?;
                 }
             }
+        }
+        Ok(())
+    }
+    
+    fn apply_backup(&self) -> Result<(), QboxError> {
+        let v_backup_path = self.qbox_path.join(V_BACKUP_NAME);
+        if !v_backup_path.exists() {
+            return Err(
+                QboxError::VersionPathError(v_backup_path, "backup not exists".to_string())
+            );
+        }
+        for file_path in fd::dir::read_all(&v_backup_path, None)? {
+            let backup_file_path = file_path.to_str()
+                .expect("invalid utf-8 in backup file path")
+                .trim_start_matches(v_backup_path.to_str().unwrap());
+            let target_dir = Path::new(backup_file_path).parent().unwrap();
+            if !target_dir.exists() {
+                fs::create_dir_all(target_dir)?;
+            }
+            fs::copy(&file_path, backup_file_path)?;
         }
         Ok(())
     }
