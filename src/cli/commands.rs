@@ -39,9 +39,6 @@ enum Commands {
 
         #[arg(long)]
         apply: Option<String>,
-
-        #[arg(long)]
-        apply_backup: Option<String>,
     },
 }
 
@@ -53,7 +50,7 @@ pub fn init(){
             Ok(_) => println!("Init successful"),
             Err(e) => eprintln!("Init failed: {}", e),
         },
-        Commands::Qb {make, delete, open, new_ver, del_ver, force, record, backup, apply, apply_backup} => {
+        Commands::Qb {make, delete, open, new_ver, del_ver, force, record, backup, apply} => {
             if let Some(make) = make {
                 match qb::qbox::make(&make) {
                     Ok(_) => println!("Qbox \"{}\" created successfully", make),

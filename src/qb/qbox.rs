@@ -1,5 +1,5 @@
 use std::{collections::HashMap, env, fs, io, path::{Path, PathBuf}};
-use crate::{fd::{self, file}, qb::{error::QboxError, QBOX_CONFIG_NAME, RESERVED_KEYWORDS, V_BACKUP_NAME}};
+use crate::{fd, qb::{error::QboxError, QBOX_CONFIG_NAME, RESERVED_KEYWORDS, V_BACKUP_NAME}};
 use serde::Deserialize;
 
 const BOX_DIR: &str = "boxes";
@@ -22,10 +22,10 @@ pub fn make_qbox_path(name: &str) -> io::Result<PathBuf>{
 pub fn make(name: &str) -> io::Result<()>{
     let qbox_path = make_qbox_path(name)?;
     if !qbox_path.exists() {
-        let is_make = fd::dir::make(qbox_path.to_str().unwrap())?;
+        let is_make = fd::dir::make(&qbox_path.to_string_lossy())?;
         if !is_make {
             return Err(
-                io::Error::other("unexpected error")
+                io::Error::other("error creating qbox directory")
             );
         }
         Ok(())
@@ -39,10 +39,10 @@ pub fn make(name: &str) -> io::Result<()>{
 pub fn delete(name: &str) -> io::Result<()>{
     let qbox_path = make_qbox_path(name)?;
     if qbox_path.exists(){
-        let is_delete = fd::dir::delete(qbox_path.to_str().unwrap(), false)?;
+        let is_delete = fd::dir::delete(&qbox_path.to_string_lossy(), false)?;
         if !is_delete {
             return Err(
-                io::Error::other("unexpected error")
+                io::Error::other("error deleting qbox directory")
             );
         }
         Ok(())
@@ -96,15 +96,11 @@ impl Config {
                 }
                 let valid_source_path = self.path_validate(source_path, true)?;
                 let valid_target_path = if target_path == "*" {
-                    valid_source_path.to_str().expect("unexpected path error").to_string()
+                    valid_source_path.to_string_lossy().to_string()
                 } else if self.make_dir{
-                    self.path_validate(Path::new(target_path), false)?.to_str()
-                        .expect("unexpected path error")
-                        .to_string()
+                    self.path_validate(Path::new(target_path), false)?.to_string_lossy().to_string()
                 } else {
-                    self.path_validate(Path::new(target_path), true)?.to_str()
-                        .expect("unexpected path error")
-                        .to_string()
+                    self.path_validate(Path::new(target_path), true)?.to_string_lossy().to_string()
                 };
                 valid_map.insert(valid_source_path, valid_target_path);
             }
@@ -113,14 +109,14 @@ impl Config {
         self.files = valid_files;
         let mut valid_excludes: Vec<PathBuf> = Vec::new();
         for exclude_path in &self.excludes {
-            valid_excludes.push(self.path_validate(&exclude_path, true)?);
+            valid_excludes.push(self.path_validate(exclude_path, true)?);
         }
         self.excludes = valid_excludes;
         Ok(())
     }
 
     fn path_validate(&self, path: &Path, check_exists: bool) -> Result<PathBuf, QboxError>{
-        let system_file_path = path.to_str().unwrap();
+        let system_file_path = path.to_string_lossy();
         if let Some(dollar_pos) = system_file_path.find("$")
             && let Some(slash_pos) = system_file_path[dollar_pos..].find("/"){
                 let variable = &system_file_path[dollar_pos+1..dollar_pos+1 + slash_pos-1];
@@ -194,9 +190,9 @@ impl Qbox {
         check_keywords(name)?;
         let version_path = self.qbox_path.join(name);
         if !version_path.exists(){
-            if !fd::dir::make(version_path.to_str().unwrap())? {
+            if !fd::dir::make(&version_path.to_string_lossy())? {
                 return Err(
-                    QboxError::VersionPathError(version_path, "unexpected error".to_string())
+                    QboxError::VersionPathError(version_path, "error creating version directory".to_string())
                 );
             }
         } else {
@@ -210,9 +206,9 @@ impl Qbox {
     pub fn remove_version(&self, name: &str, force: bool) -> Result<(), QboxError> {
         let version_path = self.qbox_path.join(name);
         if version_path.exists(){
-            if !fd::dir::delete(version_path.to_str().unwrap(), force)? {
+            if !fd::dir::delete(&version_path.to_string_lossy(), force)? {
                 return Err(
-                    QboxError::VersionPathError(version_path, "unexpected error".to_string())
+                    QboxError::VersionPathError(version_path, "uerror deleting version directory".to_string())
                 );
             }
         } else {
@@ -243,6 +239,10 @@ impl Qbox {
         Ok(())
     }
 
+    /// Creates files that are stored in the version in the selected directory.
+    /// Deletes all files from the selected directory and creates items there that are stored in the version.
+    /// IMPORTANT: Only items at the end of the source path will be created. For example:
+    /// If the source path is /home/user/temp, only items stored in the “temp” directory will be created; nothing else will be touched.
     pub fn apply(&self, version: &str) -> Result<(), QboxError> {
         if version == V_BACKUP_NAME {
             self.apply_backup()?;
@@ -258,25 +258,24 @@ impl Qbox {
         for v_file_path in fd::dir::read_all(&version_path, None)? {
             let formatted_v_file_path =
                 v_file_path
-                    .to_str().expect("invalid utf-8 in source path")
-                    .strip_prefix(version_path.to_str().expect("invalid utf-8 in source path"))
+                    .to_string_lossy()
+                    .strip_prefix(&*version_path.to_string_lossy())
                     .expect("path is not prefixed by version_path").to_string();
             formatted_v_file_paths.push(formatted_v_file_path);
         }
         for file in &self.config.files {
             for (source_path, target_path) in file {
-                let string_source_path = source_path.to_str().expect("invalid utf-8 in source path").to_string();
+                let string_source_path = source_path.to_string_lossy();
                 for formatted_v_file_path in &formatted_v_file_paths {
-                    println!("{:?}", string_source_path);
-                    if formatted_v_file_path.starts_with(&string_source_path){
-                        let real_files = formatted_v_file_path.trim_start_matches(&string_source_path).trim_start_matches("/");
+                    if formatted_v_file_path.starts_with(&*string_source_path){
+                        let real_files = formatted_v_file_path.trim_start_matches(&*string_source_path).trim_start_matches("/");
                         let new_file = Path::new(target_path).join(Path::new(real_files));
-                        let new_file_parent = new_file.parent()
-                            .unwrap_or_else(|| panic!("the parent directory for the file \"{:?}\" does not exist", new_file));
-                        if new_file_parent.exists(){
-                            fs::remove_dir_all(new_file_parent)?;
+                        if let Some(new_file_parent) = new_file.parent(){
+                            if new_file_parent.exists(){
+                                fs::remove_dir_all(new_file_parent)?;
+                            }
+                            fs::create_dir_all(new_file_parent)?;
                         }
-                        fs::create_dir_all(new_file_parent)?;
                         fs::copy(formatted_v_file_path, new_file)?;
                     }
                 }
@@ -305,6 +304,10 @@ impl Qbox {
         Ok(())
     }
     
+    /// Apply backup.
+    /// The backup directory contains directories that are absolute paths to files.
+    /// The algorithm formats them so that they are perceived as absolute paths and 
+    /// creates files from the backup using these paths.
     fn apply_backup(&self) -> Result<(), QboxError> {
         let v_backup_path = self.qbox_path.join(V_BACKUP_NAME);
         if !v_backup_path.exists() {
@@ -313,13 +316,12 @@ impl Qbox {
             );
         }
         for file_path in fd::dir::read_all(&v_backup_path, None)? {
-            let backup_file_path = file_path.to_str()
-                .expect("invalid utf-8 in backup file path")
-                .trim_start_matches(v_backup_path.to_str().unwrap());
-            let target_dir = Path::new(backup_file_path).parent().unwrap();
-            if !target_dir.exists() {
-                fs::create_dir_all(target_dir)?;
-            }
+            let file_path_str = file_path.to_string_lossy();
+            let backup_file_path = file_path_str.trim_start_matches(&*v_backup_path.to_string_lossy());
+            if let Some(target_dir) = Path::new(backup_file_path).parent()
+                && !target_dir.exists() {
+                    fs::create_dir_all(target_dir)?;
+                }
             fs::copy(&file_path, backup_file_path)?;
         }
         Ok(())
