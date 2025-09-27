@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use crate::qb;
+use crate::qb::{self, error::QboxError};
 
 #[derive(Parser)]
 #[command(name = "myapp")]
@@ -13,99 +13,106 @@ struct Cli {
 enum Commands {
     Init,
     Qb {
-        #[arg(long)]
-        make: Option<String>,
-
-        #[arg(long)]
-        delete: Option<String>,
-
-        #[arg(long)]
-        open: Option<String>,
-
-        #[arg(long)]
-        new_ver: Option<String>,
-
-        #[arg(long)]
-        del_ver: Option<String>,
-
-        #[arg(long)]
-        force: bool,
-
-        #[arg(long)]
-        record: Option<String>,
-
-        #[arg(long)]
-        backup: bool,
-
-        #[arg(long)]
-        apply: Option<String>,
-    },
+        #[command(subcommand)]
+        cmd: QbCommands,
+    }
 }
 
-pub fn init(){
+#[derive(Subcommand)]
+enum QbCommands {
+    Make {name: String},    
+    Delete {name: String},
+    Open {
+        name: String,
+        #[command(subcommand)]
+        actions: QbActions
+    }
+}
+
+#[derive(Subcommand)]
+enum QbActions {
+    NewVer { name: String },
+    DelVer {
+        name: String,
+    
+        #[arg(long)]
+        force: bool
+    },
+    Record {
+        name: String,
+        
+        #[arg(long)]
+        force: bool
+    },
+    Backup,
+    Apply { name: String },
+}
+
+fn command_result<T, E: std::fmt::Display>(res: Result<T, E>, success: &str, failure: &str) {
+    match res {
+        Ok(_) => println!("{}", success),
+        Err(e) => eprintln!("{}: {}", failure, e),
+    }
+}
+
+fn open_qbox(name: &str) -> Result<qb::qbox::Qbox, QboxError>{
+    match qb::qbox::Qbox::new(name) {
+        Ok(mut qbox) => {
+            match qbox.open() {
+                Ok(_) => {
+                    Ok(qbox)
+                },
+                Err(e) => {
+                    Err(e)
+                },
+            }
+        },
+        Err(e) => {
+            Err(e)
+        }
+    }
+}
+
+pub fn init() {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Init => match qb::init::init() {
-            Ok(_) => println!("Init successful"),
-            Err(e) => eprintln!("Init failed: {}", e),
-        },
-        Commands::Qb {make, delete, open, new_ver, del_ver, force, record, backup, apply} => {
-            if let Some(make) = make {
-                match qb::qbox::make(&make) {
-                    Ok(_) => println!("Qbox \"{}\" created successfully", make),
-                    Err(e) => eprintln!("Failed to create qbox: {}", e),
+        Commands::Init => {
+            command_result(qb::init::init(), "qb init success", "error qb init");
+        }
+        Commands::Qb { cmd } => {
+            match cmd {
+                QbCommands::Make { name } => {
+                    command_result(qb::qbox::make(name.as_str()), &format!("Created {}", name), "Failed to create");
                 }
-            }
-            if let Some(delete) = delete {
-                match qb::qbox::delete(&delete) {
-                    Ok(_) => println!("Qbox \"{}\" deleted successfully", delete),
-                    Err(e) => eprintln!("Failed to delete qbox: {}", e),
+                QbCommands::Delete { name } => {
+                    command_result(qb::qbox::delete(name.as_str()), &format!("Deleted {}", name), "Failed to delete");
                 }
-            }
-            if let Some(open) = open {
-                match qb::qbox::Qbox::new(&open) {
-                    Ok(mut new_qb) => {
-                        match new_qb.open() {
-                            Ok(q) => {
-                                if let Some(new_ver) = new_ver {
-                                    match q.new_version(&new_ver) {
-                                        Ok(_) => println!("version {} created", new_ver),
-                                        Err(e) => println!("Failed to create new version: {}", e),
-                                    };                           
-                                }
-                                if let Some(del_ver) = del_ver {                            
-                                    match q.remove_version(&del_ver, force) {
-                                        Ok(_) => println!("version {} deleted", del_ver),
-                                        Err(e) => println!("Failed to delete version: {}", e),
-                                    }
-                                }
-                                if let Some(record) = record {
-                                    match q.record(&record, force) {
-                                        Ok(_) => println!("success record version {}", record),
-                                        Err(e) => println!("Failed record {}", e),
-                                    };
-                                }
-                                if backup{
-                                    match q.make_backup() {
-                                        Ok(_) => println!("success create backup"),
-                                        Err(e) => println!("Failed backup {}", e),
-                                    };
-                                }
-                                if let Some(apply) = apply {
-                                    match q.apply(&apply) {
-                                        Ok(_) => println!("success record version {}", apply),
-                                        Err(e) => println!("Failed record {}", e),
-                                    };
-                                }
-                            },
-                            Err(e) => {
-                                println!("Failed to open qbox: {}", e)
-                            },
+                QbCommands::Open { name, actions } => {
+                    let open_qbox: qb::qbox::Qbox = match open_qbox(name.as_str()) {
+                        Ok(qbox) => {qbox},
+                        Err(e) => {
+                            eprintln!("Failed to open qbox: {}", e);
+                            return;
                         }
-                    },
-                    Err(e) => {
-                        eprintln!("Failed to init qbox: {}", e)
+                    };
+                    
+                    match actions {
+                        QbActions::NewVer { name: ver } => {
+                            command_result(open_qbox.new_version(ver.as_str()), &format!("New version {} created in {}", ver, name), "Failed to create version");
+                        }
+                        QbActions::DelVer { name: ver, force } => {
+                            command_result(open_qbox.remove_version(ver.as_str(), force), &format!("Deleted version {} from {} (force={})", ver, name, force), "Failed to delete version");
+                        }
+                        QbActions::Record { name: ver, force } => {
+                            command_result(open_qbox.record(ver.as_str(), force), &format!("Recorded version {} in {} (force={})", ver, name, force), "Failed to record version");
+                        }
+                        QbActions::Backup => {
+                            command_result(open_qbox.make_backup(), &format!("Backup created for {}", name), "Failed to create backup");
+                        }
+                        QbActions::Apply { name: ver } => {
+                            command_result(open_qbox.apply(ver.as_str()), &format!("Applied version {} to {}", ver, name), "Failed to apply version");
+                        }
                     }
                 }
             }
