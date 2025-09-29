@@ -1,7 +1,3 @@
-mod fd;
-mod cli;
-mod qb;
-
-fn main() {
-    cli::commands::init();
+fn main() {    
+    qbox::cli::commands::init();
 }

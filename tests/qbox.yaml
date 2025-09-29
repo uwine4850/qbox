@@ -1,0 +1,5 @@
+make_dir: true
+files:
+  - "/$HOME/rust_projects/vanilla/qbox/tests/source": "/$HOME/rust_projects/vanilla/qbox/tests/target"
+excludes:
+ - "/$HOME/rust_projects/vanilla/qbox/tests/source/ex"

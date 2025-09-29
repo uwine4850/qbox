@@ -3,13 +3,13 @@ use crate::{fd, qb::{error::QboxError, QBOX_CONFIG_NAME, RESERVED_KEYWORDS, V_BA
 use serde::Deserialize;
 
 const BOX_DIR: &str = "boxes";
-pub fn get_boxes_path() -> PathBuf {
-    let path = PathBuf::from(fd::DATA_DIR);
+pub fn get_boxes_path(data_dir: &str) -> PathBuf {
+    let path = PathBuf::from(data_dir);
     path.join(BOX_DIR)
 }
 
-pub fn make_qbox_path(name: &str) -> io::Result<PathBuf>{
-    let path = get_boxes_path();
+pub fn make_qbox_path(name: &str, data_dir: &str) -> io::Result<PathBuf>{
+    let path = get_boxes_path(data_dir);
     if !path.exists() {
         return Err(
             io::Error::other("boxes directory not exists")
@@ -19,8 +19,8 @@ pub fn make_qbox_path(name: &str) -> io::Result<PathBuf>{
     Ok(qbox_path)
 }
 
-pub fn make(name: &str) -> io::Result<()>{
-    let qbox_path = make_qbox_path(name)?;
+pub fn make(name: &str, data_dir: &str) -> io::Result<()>{
+    let qbox_path = make_qbox_path(name, data_dir)?;
     if !qbox_path.exists() {
         let is_make = fd::dir::make(&qbox_path.to_string_lossy())?;
         if !is_make {
@@ -36,10 +36,10 @@ pub fn make(name: &str) -> io::Result<()>{
     }
 }
 
-pub fn delete(name: &str) -> io::Result<()>{
-    let qbox_path = make_qbox_path(name)?;
+pub fn delete(name: &str, data_dir: &str, force: bool) -> io::Result<()>{
+    let qbox_path = make_qbox_path(name, data_dir)?;
     if qbox_path.exists(){
-        let is_delete = fd::dir::delete(&qbox_path.to_string_lossy(), false)?;
+        let is_delete = fd::dir::delete(&qbox_path.to_string_lossy(), force)?;
         if !is_delete {
             return Err(
                 io::Error::other("error deleting qbox directory")
@@ -55,15 +55,15 @@ pub fn delete(name: &str) -> io::Result<()>{
 
 const CONFIG_VARIABLES: [&str; 1] = ["HOME"];
 
-#[derive(Debug, Deserialize)]
-struct Config {
-    make_dir: bool,
+#[derive(Debug, Deserialize, PartialEq)]
+pub struct Config {
+    pub make_dir: bool,
     pub files: Vec<HashMap<PathBuf, String>>,
-    excludes: Vec<PathBuf>,
+    pub excludes: Vec<PathBuf>,
 }
 
 impl Config {
-    pub fn new() -> Self{
+    fn new() -> Self{
         Self { make_dir: false, files: Vec::new(), excludes: Vec::new() }
     }
 
@@ -146,7 +146,7 @@ impl Config {
 
 }
 
-fn read_config(path: PathBuf) -> Result<Config, QboxError>{
+pub fn read_config(path: PathBuf) -> Result<Config, QboxError>{
     let content = std::fs::read_to_string(path)?;
     let cfg: Config = serde_yaml::from_str(&content)?;   
     Ok(cfg)
@@ -159,8 +159,8 @@ pub struct Qbox {
 }
 
 impl Qbox {
-    pub fn new(name: &str) -> Result<Self, QboxError> {
-        let qbox_path = make_qbox_path(name)?;
+    pub fn new(name: &str, data_dir: &str) -> Result<Self, QboxError> {
+        let qbox_path = make_qbox_path(name, data_dir)?;
         if qbox_path.exists() {
             Ok(
                 Self {config: Config::new(), qbox_path }
@@ -187,7 +187,6 @@ impl Qbox {
     }
 
     pub fn new_version(&self, name: &str) -> Result<(), QboxError> {
-        check_keywords(name)?;
         let version_path = self.qbox_path.join(name);
         if !version_path.exists(){
             if !fd::dir::make(&version_path.to_string_lossy())? {
@@ -243,7 +242,7 @@ impl Qbox {
     /// Deletes all files from the selected directory and creates items there that are stored in the version.
     /// IMPORTANT: Only items at the end of the source path will be created. For example:
     /// If the source path is /home/user/temp, only items stored in the “temp” directory will be created; nothing else will be touched.
-    pub fn apply(&self, version: &str) -> Result<(), QboxError> {
+    pub fn apply(&self, version: &str, force: bool) -> Result<(), QboxError> {
         if version == V_BACKUP_NAME {
             self.apply_backup()?;
             return Ok(());
@@ -271,7 +270,8 @@ impl Qbox {
                         let real_files = formatted_v_file_path.trim_start_matches(&*string_source_path).trim_start_matches("/");
                         let new_file = Path::new(target_path).join(Path::new(real_files));
                         if let Some(new_file_parent) = new_file.parent(){
-                            if new_file_parent.exists(){
+                            if new_file_parent.exists() && force{
+                                println!("{:?}", new_file_parent);
                                 fs::remove_dir_all(new_file_parent)?;
                             }
                             fs::create_dir_all(new_file_parent)?;
@@ -328,7 +328,7 @@ impl Qbox {
     }
 }
 
-fn check_keywords(name: &str) -> Result<(), QboxError>{
+pub fn check_keywords(name: &str) -> Result<(), QboxError>{
     if RESERVED_KEYWORDS.contains(&name){
         return Err(QboxError::ReservedKeyword(name.to_string()));
     }
