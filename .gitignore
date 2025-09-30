@@ -1,3 +1,7 @@
 /target
 /lib
 temp
+pkg
+qbox
+*.zst
+PKGBUILD

@@ -1,5 +1,7 @@
+use std::path::PathBuf;
+
 use clap::{Parser, Subcommand};
-use crate::qb::{self, error::QboxError, DATA_DIR};
+use crate::qb::{self, data_dir, error::QboxError};
 
 #[derive(Parser)]
 #[command(name = "myapp")]
@@ -64,7 +66,7 @@ fn command_result<T, E: std::fmt::Display>(res: Result<T, E>, success: &str, fai
     }
 }
 
-fn open_qbox(name: &str, data_dir: &str) -> Result<qb::qbox::Qbox, QboxError>{
+fn open_qbox(name: &str, data_dir: PathBuf) -> Result<qb::qbox::Qbox, QboxError>{
     match qb::qbox::Qbox::new(name, data_dir) {
         Ok(mut qbox) => {
             match qbox.open() {
@@ -87,18 +89,18 @@ pub fn init() {
 
     match cli.command {
         Commands::Init => {
-            command_result(qb::init::init(DATA_DIR), "qb init success", "error qb init");
+            command_result(qb::init::init(data_dir()), "qb init success", "error qb init");
         }
         Commands::Qb { cmd } => {
             match cmd {
                 QbCommands::Make { name } => {
-                    command_result(qb::qbox::make(name.as_str(), DATA_DIR), &format!("Created {}", name), "Failed to create");
+                    command_result(qb::qbox::make(name.as_str(), data_dir()), &format!("Created {}", name), "Failed to create");
                 }
                 QbCommands::Delete { name, force} => {
-                    command_result(qb::qbox::delete(name.as_str(), DATA_DIR, force), &format!("Deleted {}", name), "Failed to delete");
+                    command_result(qb::qbox::delete(name.as_str(), data_dir(), force), &format!("Deleted {}", name), "Failed to delete");
                 }
                 QbCommands::Open { name, actions } => {
-                    let open_qbox: qb::qbox::Qbox = match open_qbox(name.as_str(), DATA_DIR) {
+                    let open_qbox: qb::qbox::Qbox = match open_qbox(name.as_str(), data_dir()) {
                         Ok(qbox) => {qbox},
                         Err(e) => {
                             eprintln!("Failed to open qbox: {}", e);

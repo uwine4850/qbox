@@ -1,8 +1,6 @@
 use std::{collections::HashMap, fs, path::{Path, PathBuf}};
-use qbox::{fd, qb};
+use qbox::{fd, qb::{self, data_dir}};
 use tempfile::{self, tempdir, TempDir};
-
-const DATA_DIR: &str = "tests/qbox";
 
 struct TempQbox {
     _tmp: TempDir,
@@ -11,7 +9,7 @@ struct TempQbox {
 
 fn temp_qbox() -> TempQbox{
     let base = temp_boxes();
-    let result_make = qb::qbox::make("Q", base.path.to_str().unwrap());
+    let result_make = qb::qbox::make("Q", base.path.as_path().to_path_buf());
     fs::copy("tests/qbox.yaml", base.path.join("boxes/qbox_Q/qbox.yaml")).unwrap();
     assert!(result_make.is_ok(), "expected Ok, but got {:?}", result_make);
     base
@@ -36,21 +34,21 @@ fn make_config() -> qb::qbox::Config{
 
 #[test]
 fn init_test(){
-    let result = qb::init::init(DATA_DIR);
+    let result = qb::init::init(data_dir());
     assert!(result.is_ok(), "expected Ok, but got {:?}", result);
 }
 
 #[test]
 fn get_boxes_path_test(){
     let base = temp_boxes();
-    let path = qb::qbox::get_boxes_path(base.path.to_str().unwrap());
+    let path = qb::qbox::get_boxes_path(base.path.as_path().to_path_buf());
     assert_eq!(path, base.path.join("boxes"));
 }
 
 #[test]
 fn make_qbox_path_test(){
     let base = temp_boxes();
-    let result = qb::qbox::make_qbox_path("tee", base.path.to_str().unwrap());
+    let result = qb::qbox::make_qbox_path("tee", base.path.as_path().to_path_buf());
     assert!(result.is_ok(), "expected Ok, but got {:?}", result);
 
     let path = result.unwrap();
@@ -59,13 +57,13 @@ fn make_qbox_path_test(){
 
 #[test]
 fn make_test(){
-    let result = qb::qbox::make("Q", temp_boxes().path.to_str().unwrap());
+    let result = qb::qbox::make("Q", temp_boxes().path);
     assert!(result.is_ok(), "expected Ok, but got {:?}", result);
 }
 
 #[test]
 fn delete_test(){
-    let result = qb::qbox::delete("Q", temp_qbox().path.to_str().unwrap(), true);
+    let result = qb::qbox::delete("Q", temp_qbox().path, true);
     assert!(result.is_ok(), "expected Ok, but got {:?}", result);    
 }
 
@@ -87,7 +85,7 @@ fn config_validate_test(){
 
 fn open_qbox() -> (TempQbox, qb::qbox::Qbox){
     let base = temp_qbox();
-    let qbox = qb::qbox::Qbox::new("Q", base.path.to_str().unwrap());
+    let qbox = qb::qbox::Qbox::new("Q", base.path.as_path().to_path_buf());
     assert!(qbox.is_ok(), "expected Ok, but got {:?}", qbox);
     let mut u_qbox = qbox.unwrap();
     let opened_qbox = u_qbox.open();

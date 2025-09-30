@@ -3,12 +3,11 @@ use crate::{fd, qb::{error::QboxError, QBOX_CONFIG_NAME, RESERVED_KEYWORDS, V_BA
 use serde::Deserialize;
 
 const BOX_DIR: &str = "boxes";
-pub fn get_boxes_path(data_dir: &str) -> PathBuf {
-    let path = PathBuf::from(data_dir);
-    path.join(BOX_DIR)
+pub fn get_boxes_path(data_dir: PathBuf) -> PathBuf {
+    data_dir.join(BOX_DIR)
 }
 
-pub fn make_qbox_path(name: &str, data_dir: &str) -> io::Result<PathBuf>{
+pub fn make_qbox_path(name: &str, data_dir: PathBuf) -> io::Result<PathBuf>{
     let path = get_boxes_path(data_dir);
     if !path.exists() {
         return Err(
@@ -19,7 +18,7 @@ pub fn make_qbox_path(name: &str, data_dir: &str) -> io::Result<PathBuf>{
     Ok(qbox_path)
 }
 
-pub fn make(name: &str, data_dir: &str) -> io::Result<()>{
+pub fn make(name: &str, data_dir: PathBuf) -> io::Result<()>{
     let qbox_path = make_qbox_path(name, data_dir)?;
     if !qbox_path.exists() {
         let is_make = fd::dir::make(&qbox_path.to_string_lossy())?;
@@ -36,7 +35,7 @@ pub fn make(name: &str, data_dir: &str) -> io::Result<()>{
     }
 }
 
-pub fn delete(name: &str, data_dir: &str, force: bool) -> io::Result<()>{
+pub fn delete(name: &str, data_dir: PathBuf, force: bool) -> io::Result<()>{
     let qbox_path = make_qbox_path(name, data_dir)?;
     if qbox_path.exists(){
         let is_delete = fd::dir::delete(&qbox_path.to_string_lossy(), force)?;
@@ -159,7 +158,7 @@ pub struct Qbox {
 }
 
 impl Qbox {
-    pub fn new(name: &str, data_dir: &str) -> Result<Self, QboxError> {
+    pub fn new(name: &str, data_dir: PathBuf) -> Result<Self, QboxError> {
         let qbox_path = make_qbox_path(name, data_dir)?;
         if qbox_path.exists() {
             Ok(

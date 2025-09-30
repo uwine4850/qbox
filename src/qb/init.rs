@@ -1,7 +1,7 @@
 use crate::{fd, qb::{qbox}};
-use std::{io};
+use std::{io, path::PathBuf};
 
-fn make_boxes(data_dir: &str) -> io::Result<()>{
+fn make_boxes(data_dir: PathBuf) -> io::Result<()>{
     let boxes_path = qbox::get_boxes_path(data_dir);
     if !boxes_path.exists(){
         let created = fd::dir::make(boxes_path.to_str().unwrap())?;
@@ -12,6 +12,6 @@ fn make_boxes(data_dir: &str) -> io::Result<()>{
     Ok(())
 }
 
-pub fn init(data_dir: &str) -> io::Result<()> {
+pub fn init(data_dir: PathBuf) -> io::Result<()> {
     make_boxes(data_dir)
 }
