@@ -22,10 +22,10 @@ fn temp_boxes() -> TempQbox{
     TempQbox { _tmp: tmp, path: base }
 }
 
-fn make_config() -> qb::qbox::Config{
+fn make_config() -> qb::config::Config{
     let mut map: HashMap<PathBuf, String> = HashMap::new();
     map.insert(Path::new("/$HOME/rust_projects/vanilla/qbox/tests/source").to_path_buf(), "/$HOME/rust_projects/vanilla/qbox/tests/target".to_string());
-    qb::qbox::Config {
+    qb::config::Config {
         make_dir: true,
         files: vec![map],
         excludes: vec![Path::new("/$HOME/rust_projects/vanilla/qbox/tests/source/ex").to_path_buf()]
@@ -70,7 +70,7 @@ fn delete_test(){
 #[test]
 fn read_config_test(){
     let base = temp_qbox();
-    let config = qb::qbox::read_config(base.path.join("boxes/qbox_Q/qbox.yaml")).unwrap();
+    let config = qb::config::read_config(base.path.join("boxes/qbox_Q/qbox.yaml")).unwrap();
 
     let expect_config = make_config();
     assert_eq!(config, expect_config);

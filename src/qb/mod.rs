@@ -3,6 +3,7 @@ use std::{env, fs::create_dir, path::{PathBuf}};
 pub mod init;
 pub mod qbox;
 pub mod error;
+pub mod config;
 
 const QBOX_CONFIG_NAME: &str = "qbox.yaml";
 const RESERVED_KEYWORDS: [&str; 1] = ["backup"];
